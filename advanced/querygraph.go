@@ -54,7 +54,7 @@ func IterateTrapezoids(root *QueryNode) chan *Trapezoid {
 	ch := make(chan *Trapezoid)
 	go func() {
 		for node := range IterateGraph(root) {
-			if sink, ok := node.Inner.(SinkNode); ok {
+			if sink, ok := node.GetInner().(SinkNode); ok {
 				ch <- sink.Trapezoid
 			}
 		}
@@ -131,7 +131,7 @@ func NewQueryGraph(segment *Segment) *QueryGraph {
 		Bottom: a,
 	}
 
-	top.Sink = &QueryNode{SinkNode{Trapezoid: top}}
+	top.Sink = &QueryNode{Inner: SinkNode{Trapezoid: top}}
 
 	left := &Trapezoid{
 		Left:   nil,
@@ -139,7 +139,7 @@ func NewQueryGraph(segment *Segment) *QueryGraph {
 		Top:    a,
 		Bottom: b,
 	}
-	left.Sink = &QueryNode{SinkNode{Trapezoid: left}}
+	left.Sink = &QueryNode{Inner: SinkNode{Trapezoid: left}}
 
 	right := &Trapezoid{
 		Left:   segment,
@@ -147,7 +147,7 @@ func NewQueryGraph(segment *Segment) *QueryGraph {
 		Top:    a,
 		Bottom: b,
 	}
-	right.Sink = &QueryNode{SinkNode{Trapezoid: right}}
+	right.Sink = &QueryNode{Inner: SinkNode{Trapezoid: right}}
 
 	bottom := &Trapezoid{
 		Left:   nil,
@@ -155,7 +155,7 @@ func NewQueryGraph(segment *Segment) *QueryGraph {
 		Top:    b,
 		Bottom: nil,
 	}
-	bottom.Sink = &QueryNode{SinkNode{Trapezoid: bottom}}
+	bottom.Sink = &QueryNode{Inner: SinkNode{Trapezoid: bottom}}
 
 	// Set up the neighbor relationships
 	top.TrapezoidsBelow[0] = left
@@ -168,13 +168,13 @@ func NewQueryGraph(segment *Segment) *QueryGraph {
 	bottom.TrapezoidsAbove[1] = right
 
 	// Build the initial query graph pointing at the sinks
-	graph := &QueryNode{YNode{
+	graph := &QueryNode{Inner: YNode{
 		Key:   a,
 		Above: top.Sink,
-		Below: &QueryNode{YNode{
+		Below: &QueryNode{Inner: YNode{
 			Key:   b,
 			Below: bottom.Sink,
-			Above: &QueryNode{XNode{
+			Above: &QueryNode{Inner: XNode{
 				Key:   segment,
 				Left:  left.Sink,
 				Right: right.Sink,
@@ -183,12 +183,17 @@ func NewQueryGraph(segment *Segment) *QueryGraph {
 	}}
 
 	// Backlink all the trapezoid sinks to their initial parents
-
-	for node := range IterateGraph(graph) {
+	// Use synchronous iteration to avoid race conditions
+	iter := NewGraphIterator(graph)
+	for {
+		node := iter.Next()
+		if node == nil {
+			break
+		}
 		for _, child := range node.ChildNodes() {
-			if sink, ok := child.Inner.(SinkNode); ok {
+			if sink, ok := child.GetInner().(SinkNode); ok {
 				sink.InitialParent = node
-				child.Inner = sink
+				child.SetInner(sink)
 			}
 		}
 	}
@@ -199,7 +204,7 @@ func NewQueryGraph(segment *Segment) *QueryGraph {
 func (graph *QueryGraph) PrintAllTrapezoids() {
 	var parts []string
 	for node := range IterateGraph(graph.Root) {
-		if node, ok := node.Inner.(SinkNode); ok {
+		if node, ok := node.GetInner().(SinkNode); ok {
 			parts = append(parts, node.Trapezoid.String())
 		}
 	}
@@ -221,7 +226,7 @@ func (graph *QueryGraph) AddSegment(segment *Segment) {
 	// Find the node that contains the top point, coming from the bottom
 	node := graph.FindPoint(top.PointingAt(bottom))
 
-	var topTrapezoid = node.Inner.(SinkNode).Trapezoid
+	var topTrapezoid = node.GetInner().(SinkNode).Trapezoid
 
 	// Check if the top point is already in the graph. If so, no horizontal split is needed
 	if !topTrapezoid.HasPoint(top) {
@@ -230,13 +235,13 @@ func (graph *QueryGraph) AddSegment(segment *Segment) {
 
 	// Do the same process for the bottom point
 	node = graph.FindPoint(bottom.PointingAt(top))
-	var bottomTrapezoid = node.Inner.(SinkNode).Trapezoid
+	var bottomTrapezoid = node.GetInner().(SinkNode).Trapezoid
 
 	// Same check
 	if !bottomTrapezoid.HasPoint(bottom) {
 		graph.SplitTrapezoidHorizontally(node, bottom)
 		// We now want the top sink trapezoid, since the line segment crosses that.
-		bottomTrapezoid = node.Inner.(YNode).Above.Inner.(SinkNode).Trapezoid
+		bottomTrapezoid = node.GetInner().(YNode).Above.GetInner().(SinkNode).Trapezoid
 	}
 
 	// Split the trapezoids that intersect the line segment. Note at this point
@@ -343,7 +348,7 @@ func (graph *QueryGraph) AddSegment(segment *Segment) {
 			// Note that we can't set an initial parent on the new sink, because
 			// (assuming there's more than one trapezoid in the chunk), the node will
 			// have multiple XNode parents.
-			sink := &QueryNode{SinkNode{Trapezoid: mergedTrapezoid}}
+			sink := &QueryNode{Inner: SinkNode{Trapezoid: mergedTrapezoid}}
 
 			// Change every SinkNode to XNode, or complete the XNode depending on direction
 			for _, trapezoid := range chunk {
@@ -358,11 +363,11 @@ func (graph *QueryGraph) AddSegment(segment *Segment) {
 						Left: sink,
 					}
 				} else { // On right side, we created the xnode when we did the left side, so we just need to update it
-					xnode = node.Inner.(XNode)
+					xnode = node.GetInner().(XNode)
 					xnode.Right = sink
 				}
 				// Update the node
-				node.Inner = xnode
+				node.SetInner(xnode)
 			}
 
 			mergedTrapezoid.Sink = sink
@@ -372,7 +377,7 @@ func (graph *QueryGraph) AddSegment(segment *Segment) {
 
 // Split a trapezoid horizontally, and replace its sink with a y node. node.Inner must be a sink
 func (graph *QueryGraph) SplitTrapezoidHorizontally(node *QueryNode, point *Point) {
-	sink := node.Inner.(SinkNode)
+	sink := node.GetInner().(SinkNode)
 	top := new(Trapezoid)
 	bottom := new(Trapezoid)
 	origTop := sink.Trapezoid.Top
@@ -397,8 +402,8 @@ func (graph *QueryGraph) SplitTrapezoidHorizontally(node *QueryNode, point *Poin
 	top.TrapezoidsBelow = TrapezoidNeighborList{bottom}
 	bottom.TrapezoidsAbove = TrapezoidNeighborList{top}
 
-	top.Sink = &QueryNode{SinkNode{Trapezoid: top, InitialParent: node}}
-	bottom.Sink = &QueryNode{SinkNode{Trapezoid: bottom, InitialParent: node}}
+	top.Sink = &QueryNode{Inner: SinkNode{Trapezoid: top, InitialParent: node}}
+	bottom.Sink = &QueryNode{Inner: SinkNode{Trapezoid: bottom, InitialParent: node}}
 
 	// Back link neighbors
 	for _, neighbor := range top.TrapezoidsAbove {
@@ -413,11 +418,11 @@ func (graph *QueryGraph) SplitTrapezoidHorizontally(node *QueryNode, point *Poin
 	}
 
 	// Create the new sink nodes, replacing the original trapezoid's sink
-	node.Inner = YNode{
+	node.SetInner(YNode{
 		Key:   point,
 		Above: top.Sink,
 		Below: bottom.Sink,
-	}
+	})
 }
 
 // Add a polygon to the graph. If the polygon winds clockwise, this will end up
@@ -483,7 +488,7 @@ func (g *QueryGraph) ContainsPoint(point *Point) bool {
 		return false
 	}
 
-	return containingTrapezoid.Inner.(SinkNode).Trapezoid.IsInside()
+	return containingTrapezoid.GetInner().(SinkNode).Trapezoid.IsInside()
 }
 
 func (g *QueryGraph) IterateGraph() chan *QueryNode {

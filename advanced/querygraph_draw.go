@@ -4,6 +4,7 @@ import (
 	"image"
 	"math"
 	"os"
+	"sync"
 
 	"github.com/fogleman/gg"
 	imgcat "github.com/martinlindhe/imgcat/lib"
@@ -14,6 +15,7 @@ import (
 const dbgDrawPadding = 100
 
 var inverseMatrixForContext map[*gg.Context]gg.Matrix
+var inverseMatrixMutex sync.RWMutex
 
 func init() {
 	inverseMatrixForContext = make(map[*gg.Context]gg.Matrix)
@@ -66,7 +68,9 @@ func (g *QueryGraph) dbgDraw(scale float64) {
 		Translate(-dbgDrawPadding, -dbgDrawPadding).
 		Scale(1, -1).
 		Translate(0, -float64(height))
+	inverseMatrixMutex.Lock()
 	inverseMatrixForContext[c] = inverseMatrix
+	inverseMatrixMutex.Unlock()
 
 	c.SetLineWidth(3)
 	g.draw(c)
@@ -159,7 +163,9 @@ func (t *Trapezoid) draw(c *gg.Context, stroke bool) {
 }
 
 func getCanvasBounds(c *gg.Context) image.Rectangle {
+	inverseMatrixMutex.RLock()
 	matrix := inverseMatrixForContext[c]
+	inverseMatrixMutex.RUnlock()
 	bounds := image.Rect(-10, -10, c.Width()+20, c.Height()+20)
 	minX, minY := matrix.TransformPoint(float64(bounds.Min.X), float64(bounds.Min.Y))
 	maxX, maxY := matrix.TransformPoint(float64(bounds.Max.X), float64(bounds.Max.Y))

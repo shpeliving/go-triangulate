@@ -13,6 +13,8 @@ package advanced
 // 3D meshes where you might just have a pile of line segments that lie on a
 // plane.
 
+import "sync"
+
 // Query nodes are polymorphic, and we need to be able to replace the content
 // with a different node type in O(1) time. Therefore, we use this interface to
 // provide a union between the different types of query node.
@@ -38,21 +40,43 @@ func (YNode) queryModeInnerTypeHint()    {}
 func (XNode) queryModeInnerTypeHint()    {}
 
 type QueryNode struct {
+	mu    sync.RWMutex
 	Inner QueryNodeInner
 }
 
 func (n *QueryNode) FindPoint(dp DirectionalPoint) *QueryNode {
+	n.mu.RLock()
+	inner := n.Inner
+	n.mu.RUnlock()
+	
 	// If we found a sink node, we're done
-	if _, ok := n.Inner.(SinkNode); ok {
+	if _, ok := inner.(SinkNode); ok {
 		return n
 	}
 
 	// For other node types, ask the inner node to search its children
-	return n.Inner.FindPoint(dp)
+	return inner.FindPoint(dp)
 }
 
 func (n *QueryNode) ChildNodes() []*QueryNode {
-	return n.Inner.ChildNodes()
+	n.mu.RLock()
+	inner := n.Inner
+	n.mu.RUnlock()
+	return inner.ChildNodes()
+}
+
+// SetInner safely updates the Inner field
+func (n *QueryNode) SetInner(inner QueryNodeInner) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.Inner = inner
+}
+
+// GetInner safely reads the Inner field
+func (n *QueryNode) GetInner() QueryNodeInner {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	return n.Inner
 }
 
 type SinkNode struct {

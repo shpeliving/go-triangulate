@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
 
 	petname "github.com/dustinkirkland/golang-petname"
 )
@@ -14,6 +15,7 @@ import (
 // something more easily distinguishable when debugging.
 
 var memo map[interface{}]string
+var memoMutex sync.RWMutex
 
 func init() {
 	memo = make(map[interface{}]string)
@@ -28,6 +30,16 @@ func Name(obj interface{}) string {
 		return "Ø"
 	}
 
+	memoMutex.RLock()
+	if r, ok := memo[obj]; ok {
+		memoMutex.RUnlock()
+		return r
+	}
+	memoMutex.RUnlock()
+	
+	memoMutex.Lock()
+	defer memoMutex.Unlock()
+	// Check again in case another goroutine added it while we were waiting
 	if r, ok := memo[obj]; ok {
 		return r
 	}
