@@ -1,4 +1,4 @@
-module github.com/osuushi/triangulate
+module github.com/shpeliving/go-triangulate
 
 go 1.17
 
