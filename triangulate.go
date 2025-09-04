@@ -5,7 +5,7 @@
 // set of triangles containing only the original points.
 package triangulate
 
-import "github.com/osuushi/triangulate/advanced"
+import "github.com/shpeliving/go-triangulate/advanced"
 
 type Point = advanced.Point
 type Triangle = advanced.Triangle

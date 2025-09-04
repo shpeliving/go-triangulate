@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/logrusorgru/aurora"
-	"github.com/osuushi/triangulate/advanced/dbg"
+	"github.com/shpeliving/go-triangulate/advanced/dbg"
 )
 
 type Trapezoid struct {

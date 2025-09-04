@@ -5,7 +5,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/osuushi/triangulate"
+	"github.com/shpeliving/go-triangulate"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -143,7 +143,7 @@ func TestTriangulateExamples(t *testing.T) {
 		numPoints := 5
 		outerRadius := 2.0
 		innerRadius := 0.8
-		
+
 		var star []*triangulate.Point
 		for i := 0; i < numPoints*2; i++ {
 			angle := float64(i) * math.Pi / float64(numPoints)
@@ -151,7 +151,7 @@ func TestTriangulateExamples(t *testing.T) {
 			if i%2 == 1 {
 				radius = innerRadius
 			}
-			
+
 			star = append(star, &triangulate.Point{
 				X: radius * math.Cos(angle),
 				Y: radius * math.Sin(angle),
@@ -180,7 +180,7 @@ func TestTriangulateExamples(t *testing.T) {
 
 		// Run multiple triangulations concurrently
 		results := make(chan []*triangulate.Triangle, 5)
-		
+
 		for i := 0; i < 5; i++ {
 			go func() {
 				triangles, err := triangulate.Triangulate(square)
